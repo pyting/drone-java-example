@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: b-sms-verify
+  labels:
+    name: b-sms-verify
+spec:
+  selector:
+    matchLabels:
+      name: b-sms-verify
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        name: b-sms-verify
+    spec:
+      containers:
+        - name: b-sms-verify
+          command:
+            - /bin/bash
+            - -c
+            - cp /app/yaml/application.yaml /app/application.yaml;mv *.jar app.jar;java -jar app.jar --spring.profiles.location=/app/application.yaml
+          image: harbor.qsbp.io:80/qsbp/b-sms-verify:{{tag}}
+          imagePullPolicy: IfNotPresent
+          resources:
+            limits:
+              cpu: 2000m
+              memory: 4096Mi
+            requests:
+              cpu: 200m
+              memory: 200Mi
+          ports:
+            - containerPort: 80
+          #                env:
+          #                - name: IM_LOGIC_DATABASE_DIALECT
+          #                  value: <DATABASE_DIALECT>
+          #                - name: IM_LOGIC_DATABASE_CONNECTION
+          #                  value: <DATABASE_CONNECTION>
+          #                valueFrom:
+          #                  secretKeyRef:
+          #                    name: gomk-b-im-logic-jwt-secret
+          #                    key: secret
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+            # 保持docker时区与宿主机保持一致
+            - name: localtime
+              mountPath: /etc/localtime
+            - name: application
+              mountPath: /app/yaml
+      restartPolicy: Always
+      volumes:
+        - name: localtime
+          hostPath:
+            path: /etc/localtime
+            type: File
+        - name: application
+          configMap:
+            name: sms-application
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: b-sms-verify-service
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+  selector:
+    name: b-sms-verify
+---
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /sms/$2
+  name: b-sms-verify-ingress
+spec:
+  rules:
+    - host: qsbp.io
+      http:
+        paths:
+          - path: /sms(/|$)(.*)
+            backend:
+              serviceName: b-sms-verify-service
+              servicePort: 80
