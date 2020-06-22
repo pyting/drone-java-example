@@ -1,0 +1,71 @@
+kind: pipeline
+type: kubernetes
+name: pyting
+metadata:
+  namespace: dev
+
+trigger:
+  event:
+    - tag
+
+steps:
+  - name: restore-cache
+    image: meltwater/drone-cache:v1
+    settings:
+      restore: true
+      access_key:
+        from_secret: minio_access_key
+      secret_key:
+        from_secret: minio_secret_key
+      endpoint: http://minio.p-t4t6c-pipeline.svc.cluster.local:9000
+      bucket: java-cache
+      region: us-east-1
+      # debug: true
+      path_style: true
+      mount:
+        - repository
+
+  - name: build
+    image: maven:3-jdk-8
+    commands:
+      - echo '<?xml version="1.0" encoding="UTF-8"?><settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 http://maven.apache.org/xsd/settings-1.0.0.xsd">  <localRepository>/drone/src/repository</localRepository></settings>' > /usr/share/maven/conf/settings.xml
+      - mvn clean package
+
+  # - name: publish
+  #   image: plugins/docker:latest
+  #   settings:
+  #     registry: harbor.qsbp.io:80
+  #     insecure: true
+  #     username:
+  #       from_secret: docker_username
+  #     password:
+  #       from_secret: docker_password
+  #     repo: harbor.qsbp.io:80/qsbp/b-sms-verify
+  #     tags: ${DRONE_TAG}
+
+  # - name: deploy
+  #   image: danielgormly/drone-plugin-kube
+  #   settings:
+  #     template: deployment.yaml
+  #     namespace: dev
+  #     token:
+  #       from_secret: kube_token
+  #     ca:
+  #       from_secret: kube_ca
+  #     server: https://192.168.1.68:6443
+
+  - name: rebuild-cache
+    image: meltwater/drone-cache:v1
+    settings:
+      rebuild: true
+      access_key:
+        from_secret: minio_access_key
+      secret_key:
+        from_secret: minio_secret_key
+      endpoint: http://minio.p-t4t6c-pipeline.svc.cluster.local:9000
+      bucket: java-cache
+      region: us-east-1
+      # debug: true
+      path_style: true
+      mount:
+        - repository
